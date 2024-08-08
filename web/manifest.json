@@ -1,9 +1,9 @@
 {
     "name": "To-Do Puzzles",
     "short_name": "To-Do Puzzles",
-    "start_url": ".",
+    "start_url": "/",
     "display": "standalone",
-    "description": "A new Flutter project.",
+    "description": "A Todo app with a twist that involves puzzles.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

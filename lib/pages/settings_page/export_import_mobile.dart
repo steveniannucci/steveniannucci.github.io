@@ -26,11 +26,32 @@ Future<String?> convertImageToBase64(String? imagePath) async {
 }
 
 Future<bool> _requestStoragePermission() async {
-  var status = await Permission.storage.status;
-  if (!status.isGranted) {
-    status = await Permission.storage.request();
+  if (Platform.isAndroid && await _isAndroid11OrAbove()) {
+    var status = await Permission.manageExternalStorage.status;
+    if (!status.isGranted) {
+      status = await Permission.manageExternalStorage.request();
+    }
+    return status.isGranted;
+  } else {
+    var status = await Permission.storage.status;
+    if (!status.isGranted) {
+      status = await Permission.storage.request();
+    }
+    return status.isGranted;
   }
-  return status.isGranted;
+}
+
+Future<bool> _isAndroid11OrAbove() async {
+  if (Platform.isAndroid) {
+    final version = await _getAndroidVersion();
+    return version >= 30; // Android 11 is API level 30
+  }
+  return false;
+}
+
+Future<int> _getAndroidVersion() async {
+  final version = await MethodChannel('your_channel_name').invokeMethod<int>('getAndroidVersion');
+  return version ?? 0;
 }
 
 Future<void> exportData(AppDatabase database, BuildContext context) async {
@@ -39,7 +60,7 @@ Future<void> exportData(AppDatabase database, BuildContext context) async {
     if (Platform.isAndroid) {
       // Request storage permissions
       if (await _requestStoragePermission()) {
-        directory = Directory('/storage/emulated/0/Download');
+        directory = Directory('/storage/emulated/0/Puzzles');
         if (!directory.existsSync()) {
           directory.createSync(recursive: true);
         }
@@ -53,7 +74,16 @@ Future<void> exportData(AppDatabase database, BuildContext context) async {
       directory = await getApplicationDocumentsDirectory();
     }
 
-    final file = File('${directory.path}/puzzleData.json');
+    String fileName = 'puzzleData.json';
+    File file = File('${directory.path}/$fileName');
+    int counter = 1;
+
+    // Check if file already exists and generate a new name if necessary
+    while (file.existsSync()) {
+      fileName = 'puzzleData ($counter).json';
+      file = File('${directory.path}/$fileName');
+      counter++;
+    }
 
     // Fetch data from the database
     final puzzles = await database.select(database.puzzles).get();
@@ -64,22 +94,27 @@ Future<void> exportData(AppDatabase database, BuildContext context) async {
       'puzzles': await Future.wait(puzzles.map((puzzle) async {
         return {
           ...puzzle.toJson(),
-          'rewardImageBase64': await convertImageToBase64(puzzle.rewardImagePath),
         };
       }).toList()),
-      'taskList': taskList.map((task) => task.toJson()).toList(),
-      'categories': categories.map((category) => category.toJson()).toList(),
+      'taskList': await Future.wait(taskList.map((task) async {
+        return {
+          ...task.toJson(),
+        };
+      }).toList()),
+      'categories': await Future.wait(categories.map((category) async {
+        return {
+          ...category.toJson(),
+        };
+      }).toList()),
     };
 
+    // Write data to the file
     await file.writeAsString(jsonEncode(data));
-    print('Data exported to ${file.path}');
 
-    // Show Snackbar to inform the user
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Data exported successfully to ${file.path}')),
+      SnackBar(content: Text('Data exported to ${file.path}')),
     );
   } catch (e) {
-    print('Error exporting data: $e');
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Failed to export data: $e')),
     );
